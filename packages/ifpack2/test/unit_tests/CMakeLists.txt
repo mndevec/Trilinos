@@ -222,6 +222,14 @@ IF (${PACKAGE_NAME}_ENABLE_Experimental_KokkosKernels_Features)
     COMM serial mpi
     )
 
+  TRIBITS_ADD_EXECUTABLE(
+    PRBILUK
+    SOURCES 
+      Ifpack2_UnitTestPerfRBILUK.cpp
+      ${TEUCHOS_STD_UNIT_TEST_MAIN}
+   COMM serial mpi
+    )
+
   TRIBITS_COPY_FILES_TO_BINARY_DIR(Ifpack2_UnitTest_SGSMT_CopyFile
     DEST_FILES ${SGSMT_MATRIX_FILE}
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}

@@ -50,6 +50,15 @@
 #include <Ifpack2_Utilities.hpp>
 #include <Ifpack2_RILUK.hpp>
 
+//#define IFPACK2_TIME_IMPROVE
+#define IFPACK2_IMPROVE
+
+#ifdef IFPACK2_IMPROVE
+#include <KokkosKernels_Gemm_Decl.hpp>
+#include <KokkosKernels_Gemm_Serial_Impl.hpp>
+#include <KokkosKernels_Util.hpp>
+
+#endif
 namespace Ifpack2 {
 
 namespace Experimental {
@@ -250,7 +259,9 @@ void RBILUK<MatrixType>::initialize ()
 
     this->Graph_->initialize ();
     allocate_L_and_U_blocks ();
+#ifndef IFPACK2_IMPROVE
     initAllValues (*A_block_);
+#endif
   } // Stop timing
 
   this->isInitialized_ = true;
@@ -471,12 +482,17 @@ void RBILUK<MatrixType>::compute ()
   L_block_->template modify<Kokkos::HostSpace> ();
   U_block_->template modify<Kokkos::HostSpace> ();
   D_block_->template modify<Kokkos::HostSpace> ();
-
+#ifdef IFPACK2_TIME_IMPROVE
+  double before_loop = 0, loop_time = 0, sync_time = 0, ltime = 0, dtime = 0, utime = 0, colflaginit = 0, actualmult = 0, replacelocalval = 0, diagonalinverse = 0, last_part = 0, reset_time = 0;
+  Kokkos::Timer time_1, time_2, time_3;
+#endif
   Teuchos::Time timer ("RBILUK::compute");
   { // Start timing
     Teuchos::TimeMonitor timeMon (timer);
     this->isComputed_ = false;
-
+#ifdef IFPACK2_TIME_IMPROVE
+    time_1.reset();
+#endif
     // MinMachNum should be officially defined, for now pick something a little
     // bigger than IEEE underflow value
 
@@ -525,6 +541,11 @@ void RBILUK<MatrixType>::compute ()
     Teuchos::Array<scalar_type> InV(MaxNumEntries*blockMatSize,STM::zero());
 
     const local_ordinal_type numLocalRows = L_block_->getNodeNumRows ();
+#ifdef IFPACK2_TIME_IMPROVE
+    before_loop += time_1.seconds();
+    time_2.reset();
+#endif
+
     for (local_ordinal_type local_row = 0; local_row < numLocalRows; ++local_row) {
 
       // Fill InV, InI with current row of L, D and U combined
@@ -532,7 +553,9 @@ void RBILUK<MatrixType>::compute ()
       NumIn = MaxNumEntries;
       const local_ordinal_type * colValsL;
       scalar_type * valsL;
-
+#ifdef IFPACK2_TIME_IMPROVE
+      time_1.reset();
+#endif
       L_block_->getLocalRowView(local_row, colValsL, valsL, NumL);
       for (local_ordinal_type j = 0; j < NumL; ++j)
       {
@@ -543,13 +566,21 @@ void RBILUK<MatrixType>::compute ()
         Tpetra::Experimental::COPY (lmat, lmatV);
         InI[j] = colValsL[j];
       }
+#ifdef IFPACK2_TIME_IMPROVE
+      ltime += time_1.seconds();
 
+      time_1.reset();
+#endif
       little_block_type dmat = D_block_->getLocalBlock(local_row, local_row);
       little_block_type dmatV((typename little_block_type::value_type*) &InV[NumL*blockMatSize], blockSize_, rowStride);
       //dmatV.assign(dmat);
       Tpetra::Experimental::COPY (dmat, dmatV);
       InI[NumL] = local_row;
+#ifdef IFPACK2_TIME_IMPROVE
+      dtime += time_1.seconds();
 
+      time_1.reset();
+#endif
       const local_ordinal_type * colValsU;
       scalar_type * valsU;
       U_block_->getLocalRowView(local_row, colValsU, valsU, NumURead);
@@ -565,16 +596,37 @@ void RBILUK<MatrixType>::compute ()
         Tpetra::Experimental::COPY (umat, umatV);
         NumU += 1;
       }
+
       NumIn = NumL+NumU+1;
+#ifdef IFPACK2_TIME_IMPROVE
+      utime += time_1.seconds();
+      time_1.reset();
+#endif
 
       // Set column flags
       for (size_t j = 0; j < NumIn; ++j) {
         colflag[InI[j]] = j;
       }
 
-      scalar_type diagmod = STM::zero (); // Off-diagonal accumulator
-      Kokkos::deep_copy (diagModBlock, diagmod);
 
+      scalar_type diagmod = STM::zero (); // Off-diagonal accumulator
+#ifdef IFPACK2_IMPROVE
+      for (local_ordinal_type i = 0; i < blockSize_; ++i)
+        for (local_ordinal_type j = 0; j < blockSize_; ++j){
+          {
+            diagModBlock(i,j) = 0;
+          }
+        }
+#else
+      Kokkos::deep_copy (diagModBlock, diagmod);
+#endif
+
+#ifdef IFPACK2_TIME_IMPROVE
+      colflaginit += time_1.seconds();
+#endif
+#ifdef IFPACK2_TIME_IMPROVE
+      time_1.reset();
+#endif
       for (local_ordinal_type jj = 0; jj < NumL; ++jj) {
         local_ordinal_type j = InI[jj];
         little_block_type currentVal((typename little_block_type::value_type*) &InV[jj*blockMatSize], blockSize_, rowStride); // current_mults++;
@@ -583,8 +635,16 @@ void RBILUK<MatrixType>::compute ()
 
         const little_block_type dmatInverse = D_block_->getLocalBlock(j,j);
         // alpha = 1, beta = 0
+#ifdef IFPACK2_IMPROVE
+        KokkosKernels::Batched::Experimental::Serial::Gemm
+          <KokkosKernels::Batched::Experimental::Trans::NoTranspose,
+          KokkosKernels::Batched::Experimental::Trans::NoTranspose,
+          KokkosKernels::Batched::Experimental::Algo::Gemm::Blocked>::invoke
+          (STS::one (), currentVal, dmatInverse, STS::zero (), matTmp);
+#else
         Tpetra::Experimental::GEMM ("N", "N", STS::one (), currentVal, dmatInverse,
                                     STS::zero (), matTmp);
+#endif
         //blockMatOpts.square_matrix_matrix_multiply(reinterpret_cast<impl_scalar_type*> (currentVal.ptr_on_device ()), reinterpret_cast<impl_scalar_type*> (dmatInverse.ptr_on_device ()), reinterpret_cast<impl_scalar_type*> (matTmp.ptr_on_device ()), blockSize_);
         //currentVal.assign(matTmp);
         Tpetra::Experimental::COPY (matTmp, currentVal);
@@ -600,8 +660,16 @@ void RBILUK<MatrixType>::compute ()
             if (kk > -1) {
               little_block_type kkval((typename little_block_type::value_type*) &InV[kk*blockMatSize], blockSize_, rowStride);
               little_block_type uumat((typename little_block_type::value_type*) &UUV[k*blockMatSize], blockSize_, rowStride);
+#ifdef IFPACK2_IMPROVE
+        KokkosKernels::Batched::Experimental::Serial::Gemm
+          <KokkosKernels::Batched::Experimental::Trans::NoTranspose,
+          KokkosKernels::Batched::Experimental::Trans::NoTranspose,
+          KokkosKernels::Batched::Experimental::Algo::Gemm::Blocked>::invoke
+          ( magnitude_type(-STM::one ()), multiplier, uumat, STM::one (), kkval);
+#else
               Tpetra::Experimental::GEMM ("N", "N", magnitude_type(-STM::one ()), multiplier, uumat,
                                           STM::one (), kkval);
+#endif
               //blockMatOpts.square_matrix_matrix_multiply(reinterpret_cast<impl_scalar_type*> (multiplier.ptr_on_device ()), reinterpret_cast<impl_scalar_type*> (uumat.ptr_on_device ()), reinterpret_cast<impl_scalar_type*> (kkval.ptr_on_device ()), blockSize_, -STM::one(), STM::one());
             }
           }
@@ -613,23 +681,49 @@ void RBILUK<MatrixType>::compute ()
             little_block_type uumat((typename little_block_type::value_type*) &UUV[k*blockMatSize], blockSize_, rowStride);
             if (kk > -1) {
               little_block_type kkval((typename little_block_type::value_type*) &InV[kk*blockMatSize], blockSize_, rowStride);
+#ifdef IFPACK2_IMPROVE
+        KokkosKernels::Batched::Experimental::Serial::Gemm
+          <KokkosKernels::Batched::Experimental::Trans::NoTranspose,
+          KokkosKernels::Batched::Experimental::Trans::NoTranspose,
+          KokkosKernels::Batched::Experimental::Algo::Gemm::Blocked>::invoke
+          (magnitude_type(-STM::one ()), multiplier, uumat, STM::one (), kkval);
+#else
               Tpetra::Experimental::GEMM ("N", "N", magnitude_type(-STM::one ()), multiplier, uumat,
                                           STM::one (), kkval);
+#endif
               //blockMatOpts.square_matrix_matrix_multiply(reinterpret_cast<impl_scalar_type*>(multiplier.ptr_on_device ()), reinterpret_cast<impl_scalar_type*>(uumat.ptr_on_device ()), reinterpret_cast<impl_scalar_type*>(kkval.ptr_on_device ()), blockSize_, -STM::one(), STM::one());
             }
             else {
+#ifdef IFPACK2_IMPROVE
+        KokkosKernels::Batched::Experimental::Serial::Gemm
+          <KokkosKernels::Batched::Experimental::Trans::NoTranspose,
+          KokkosKernels::Batched::Experimental::Trans::NoTranspose,
+          KokkosKernels::Batched::Experimental::Algo::Gemm::Blocked>::invoke
+          (magnitude_type(-STM::one ()), multiplier, uumat, STM::one (), diagModBlock);
+#else
               Tpetra::Experimental::GEMM ("N", "N", magnitude_type(-STM::one ()), multiplier, uumat,
                                           STM::one (), diagModBlock);
+#endif
               //blockMatOpts.square_matrix_matrix_multiply(reinterpret_cast<impl_scalar_type*>(multiplier.ptr_on_device ()), reinterpret_cast<impl_scalar_type*>(uumat.ptr_on_device ()), reinterpret_cast<impl_scalar_type*>(diagModBlock.ptr_on_device ()), blockSize_, -STM::one(), STM::one());
             }
           }
         }
       }
+#ifdef IFPACK2_TIME_IMPROVE
+
+      actualmult += time_1.seconds();
+
+      time_1.reset();
+#endif
       if (NumL) {
         // Replace current row of L
         L_block_->replaceLocalValues (local_row, InI.getRawPtr (), InV.getRawPtr (), NumL);
       }
+#ifdef IFPACK2_TIME_IMPROVE
 
+      replacelocalval += time_1.seconds();
+      time_1.reset();
+#endif
       // dmat.assign(dmatV);
       Tpetra::Experimental::COPY (dmatV, dmat);
 
@@ -647,6 +741,7 @@ void RBILUK<MatrixType>::compute ()
 //        }
 //      }
 //      else
+
       {
         int lapackInfo = 0;
         for (int k = 0; k < blockSize_; ++k) {
@@ -654,6 +749,7 @@ void RBILUK<MatrixType>::compute ()
         }
 
         Tpetra::Experimental::GETF2 (dmat, ipiv, lapackInfo);
+
         //lapack.GETRF(blockSize_, blockSize_, d_raw, blockSize_, ipiv.getRawPtr(), &lapackInfo);
         TEUCHOS_TEST_FOR_EXCEPTION(
           lapackInfo != 0, std::runtime_error, "Ifpack2::Experimental::RBILUK::compute: "
@@ -665,12 +761,24 @@ void RBILUK<MatrixType>::compute ()
           lapackInfo != 0, std::runtime_error, "Ifpack2::Experimental::RBILUK::compute: "
           "lapackInfo = " << lapackInfo << " which indicates an error in the matrix inverse GETRI.");
       }
+#ifdef IFPACK2_TIME_IMPROVE
 
+      diagonalinverse += time_1.seconds();
+      time_1.reset();
+#endif
       for (local_ordinal_type j = 0; j < NumU; ++j) {
         little_block_type currentVal((typename little_block_type::value_type*) &InV[(NumL+1+j)*blockMatSize], blockSize_, rowStride); // current_mults++;
         // scale U by the diagonal inverse
+#ifdef IFPACK2_IMPROVE
+        KokkosKernels::Batched::Experimental::Serial::Gemm
+          <KokkosKernels::Batched::Experimental::Trans::NoTranspose,
+          KokkosKernels::Batched::Experimental::Trans::NoTranspose,
+          KokkosKernels::Batched::Experimental::Algo::Gemm::Blocked>::invoke
+          (STS::one (), dmat, currentVal, STS::zero (), matTmp);
+#else
         Tpetra::Experimental::GEMM ("N", "N", STS::one (), dmat, currentVal,
                                     STS::zero (), matTmp);
+#endif
         //blockMatOpts.square_matrix_matrix_multiply(reinterpret_cast<impl_scalar_type*>(dmat.ptr_on_device ()), reinterpret_cast<impl_scalar_type*>(currentVal.ptr_on_device ()), reinterpret_cast<impl_scalar_type*>(matTmp.ptr_on_device ()), blockSize_);
         //currentVal.assign(matTmp);
         Tpetra::Experimental::COPY (matTmp, currentVal);
@@ -680,15 +788,33 @@ void RBILUK<MatrixType>::compute ()
         // Replace current row of L and U
         U_block_->replaceLocalValues (local_row, &InI[NumL+1], &InV[blockMatSize*(NumL+1)], NumU);
       }
+#ifdef IFPACK2_TIME_IMPROVE
+      last_part += time_1.seconds();
+      time_1.reset();
+#endif
 
+#ifdef IFPACK2_IMPROVE
+      // Reset column flags
+      for (size_t j = 0; j < NumIn; ++j) {
+        colflag[InI[j]] = -1;
+      }
+#else
       // Reset column flags
       for (size_t j = 0; j < num_cols; ++j) {
         colflag[j] = -1;
       }
+#endif
+#ifdef IFPACK2_TIME_IMPROVE
+      reset_time += time_1.seconds();
+#endif
     }
-
+#ifdef IFPACK2_TIME_IMPROVE
+    loop_time += time_2.seconds();
+#endif
   } // Stop timing
-
+#ifdef IFPACK2_TIME_IMPROVE
+    time_3.reset();
+#endif
   // Sync everything back to device, for efficient solves.
   {
     typedef typename block_crs_matrix_type::device_type device_type;
@@ -701,10 +827,27 @@ void RBILUK<MatrixType>::compute ()
     U_block_->template sync<device_type> ();
     D_block_->template sync<device_type> ();
   }
-
+#ifdef IFPACK2_TIME_IMPROVE
+  sync_time += time_3.seconds();
+#endif
   this->isComputed_ = true;
   this->numCompute_ += 1;
   this->computeTime_ += timer.totalElapsedTime ();
+#ifdef IFPACK2_TIME_IMPROVE
+  std::cout
+      << " before_loop:" << before_loop << std::endl
+      << " loop_time:" << loop_time << std::endl
+      << " sync_time:" << sync_time << std::endl
+      << " ltime:" << ltime  << std::endl
+      << " dtime:" << dtime  << std::endl
+      << " utime:" << utime << std::endl
+      << " colflaginit:" <<  colflaginit << std::endl
+      << " actualmult:" << actualmult << std::endl
+      << " replacelocalval:" << replacelocalval  << std::endl
+      << " diagonalinverse:" << diagonalinverse << std::endl
+      << " last_part:" << last_part  << std::endl
+      << " reset_time:" << reset_time << std::endl;
+#endif
 }
 
 

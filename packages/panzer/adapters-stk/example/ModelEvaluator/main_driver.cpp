@@ -235,7 +235,7 @@ int main(int argc, char *argv[])
 
       mesh_factory->completeMeshConstruction(*mesh,MPI_COMM_WORLD);
  
-      mesh->setupTransientExodusFile("output.exo");
+      mesh->setupExodusFile("output.exo");
     }
 
     // build worksets
@@ -245,7 +245,11 @@ int main(int argc, char *argv[])
     Teuchos::RCP<panzer_stk::WorksetFactory> wkstFactory 
        = Teuchos::rcp(new panzer_stk::WorksetFactory(mesh)); // build STK workset factory
     Teuchos::RCP<panzer::WorksetContainer> wkstContainer             // attach it to a workset container (uses lazy evaluation)
-       = Teuchos::rcp(new panzer::WorksetContainer(wkstFactory,physicsBlocks,workset_size));
+       = Teuchos::rcp(new panzer::WorksetContainer);
+    wkstContainer->setFactory(wkstFactory);
+    for(size_t i=0;i<physicsBlocks.size();i++) 
+      wkstContainer->setNeeds(physicsBlocks[i]->elementBlockID(),physicsBlocks[i]->getWorksetNeeds());
+    wkstContainer->setWorksetSize(workset_size);
 
     // build DOF Manager
     /////////////////////////////////////////////////////////////

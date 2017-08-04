@@ -47,9 +47,9 @@ struct ThreadLocalScalarType {
 template <typename ViewType>
 struct ViewScalarStride {
   static const unsigned stride =
-    Experimental::Impl::LayoutScalarStride< typename ViewType::array_layout>::stride;
+    Impl::LayoutScalarStride< typename ViewType::array_layout>::stride;
   static const bool is_unit_stride =
-    Experimental::Impl::LayoutScalarStride< typename ViewType::array_layout>::is_unit_stride;
+    Impl::LayoutScalarStride< typename ViewType::array_layout>::is_unit_stride;
 };
 
 } // namespace Kokkos
@@ -102,6 +102,19 @@ namespace Sacado {
   //
   // For SLFad, divde the array size by the given stride
   namespace Fad {
+  namespace Exp {
+    template <typename T, int N> class StaticStorage;
+    template <typename S> class GeneralFad;
+  }
+  }
+  template <typename T, int N, unsigned Stride>
+  struct LocalScalarType< Fad::Exp::GeneralFad< Fad::Exp::StaticStorage<T,N> >,
+                          Stride > {
+    static const int Ns = (N+Stride-1) / Stride;
+    typedef Fad::Exp::GeneralFad< Fad::Exp::StaticStorage<T,Ns> > type;
+  };
+#ifndef SACADO_NEW_FAD_DESIGN_IS_DEFAULT
+  namespace Fad {
     template <typename T, int N> class SLFad;
   }
   template <typename T, int N, unsigned Stride>
@@ -109,11 +122,31 @@ namespace Sacado {
     static const int Ns = (N+Stride-1) / Stride;
     typedef Fad::SLFad<T,Ns> type;
   };
+#endif
 
   // Type of local scalar type when partitioning a view
   //
   // For SFad, divde the array size by the given stride.  If it divides evenly,
   // use SFad, otherwise use SLFad
+  namespace Fad {
+  namespace Exp {
+    template <typename T, int N> class StaticFixedStorage;
+    template <typename T, int N> class StaticStorage;
+    template <typename S> class GeneralFad;
+  }
+  }
+  template <typename T, int N, unsigned Stride>
+  struct LocalScalarType< Fad::Exp::GeneralFad< Fad::Exp::StaticFixedStorage<T,N> >,
+                          Stride > {
+    static const int Ns = (N+Stride-1) / Stride;
+    typedef typename std::conditional<
+      Ns == N/Stride ,
+      Fad::Exp::GeneralFad< Fad::Exp::StaticFixedStorage<T,Ns> > ,
+      Fad::Exp::GeneralFad< Fad::Exp::StaticStorage<T,Ns> >
+    >::type type;
+  };
+
+#ifndef SACADO_NEW_FAD_DESIGN_IS_DEFAULT
   namespace Fad {
     template <typename T, int N> class SFad;
   }
@@ -122,6 +155,7 @@ namespace Sacado {
     static const int Ns = (N+Stride-1) / Stride;
     typedef typename std::conditional< Ns == N/Stride , Fad::SFad<T,Ns> , Fad::SLFad<T,Ns> >::type type;
   };
+#endif
 
   template <unsigned Stride, typename T>
   KOKKOS_INLINE_FUNCTION
@@ -134,13 +168,71 @@ namespace Sacado {
 
 #include "Sacado_Traits.hpp"
 #include "Kokkos_Core.hpp"
-#include "impl/KokkosExp_ViewMapping.hpp"
+#include "impl/Kokkos_ViewMapping.hpp"
 
 //----------------------------------------------------------------------------
 
 namespace Sacado {
 
 #if defined(__CUDA_ARCH__)
+  namespace Fad {
+  namespace Exp {
+    template <typename T, typename U> class DynamicStorage;
+    template <typename T, int N> class StaticFixedStorage;
+    template <typename T, int N> class StaticStorage;
+    template <typename S> class GeneralFad;
+  }
+  }
+  template <unsigned Stride, typename T, typename U>
+  KOKKOS_INLINE_FUNCTION
+  typename LocalScalarType< Fad::Exp::GeneralFad< Fad::Exp::DynamicStorage<T,U> >, Stride >::type
+  partition_scalar(const Fad::Exp::GeneralFad< Fad::Exp::DynamicStorage<T,U> >& x) {
+    typedef typename LocalScalarType< Fad::Exp::GeneralFad< Fad::Exp::DynamicStorage<T,U> >, Stride >::type ret_type;
+    const int size = (x.size()+blockDim.x-threadIdx.x-1) / blockDim.x;
+    const int offset = threadIdx.x;
+    ret_type xp(size, x.val());
+
+    // Note:  we can't use x.dx(offset+i*Stride) if
+    // SACADO_VIEW_CUDA_HIERARCHICAL_DFAD_STRIDED is defined because it already
+    // uses blockDim.x in its index calculation.  This approach should work
+    // regardless
+    const T* dx = x.dx();
+    for (int i=0; i<size; ++i)
+      xp.fastAccessDx(i) = dx[offset+i*Stride];
+
+    return xp;
+  }
+  template <unsigned Stride, typename T, int N>
+  KOKKOS_INLINE_FUNCTION
+  typename LocalScalarType< Fad::Exp::GeneralFad< Fad::Exp::StaticStorage<T,N> >, Stride >::type
+  partition_scalar(const Fad::Exp::GeneralFad< Fad::Exp::StaticStorage<T,N> >& x) {
+    typedef typename LocalScalarType< Fad::Exp::GeneralFad< Fad::Exp::StaticStorage<T,N> >, Stride >::type ret_type;
+    const int size = (x.size()+blockDim.x-threadIdx.x-1) / blockDim.x;
+    const int offset = threadIdx.x;
+    ret_type xp(size, x.val());
+    for (int i=0; i<size; ++i)
+      xp.fastAccessDx(i) = x.fastAccessDx(offset+i*Stride);
+    return xp;
+  }
+  template <unsigned Stride, typename T, int N>
+  KOKKOS_INLINE_FUNCTION
+  typename LocalScalarType< Fad::Exp::GeneralFad< Fad::Exp::StaticFixedStorage<T,N> >, Stride >::type
+  partition_scalar(const Fad::Exp::GeneralFad< Fad::Exp::StaticFixedStorage<T,N> >& x) {
+    typedef typename LocalScalarType< Fad::Exp::GeneralFad< Fad::Exp::StaticFixedStorage<T,N> >, Stride >::type ret_type;
+    const int size = (x.size()+blockDim.x-threadIdx.x-1) / blockDim.x;
+    const int offset = threadIdx.x;
+    ret_type xp(size, x.val());
+    for (int i=0; i<size; ++i)
+      xp.fastAccessDx(i) = x.fastAccessDx(offset+i*Stride);
+    return xp;
+  }
+
+#ifndef SACADO_NEW_FAD_DESIGN_IS_DEFAULT
+  namespace Fad {
+    template <typename T> class DFad;
+    template <typename T, int N> class SLFad;
+    template <typename T, int N> class SFad;
+  }
   template <unsigned Stride, typename T>
   KOKKOS_INLINE_FUNCTION
   typename LocalScalarType< Fad::DFad<T>, Stride >::type
@@ -184,7 +276,9 @@ namespace Sacado {
       xp.fastAccessDx(i) = x.fastAccessDx(offset+i*Stride);
     return xp;
   }
-#endif
+#endif // SACADO_NEW_FAD_DESIGN_IS_DEFAULT
+
+#endif // defined(__CUDA_ARCH__)
 
 } // namespace Sacado
 
@@ -194,13 +288,13 @@ namespace Kokkos {
 
 template< unsigned Stride, typename D, typename ... P  >
 KOKKOS_INLINE_FUNCTION
-typename Kokkos::Experimental::Impl::ViewMapping< void, typename Kokkos::Experimental::ViewTraits<D,P...>, Sacado::Fad::Partition<Stride> >::type
-partition( const Kokkos::Experimental::View<D,P...> & src ,
+typename Kokkos::Impl::ViewMapping< void, typename Kokkos::ViewTraits<D,P...>, Sacado::Fad::Partition<Stride> >::type
+partition( const Kokkos::View<D,P...> & src ,
            const unsigned offset ,
            const unsigned stride )
 {
-  typedef Kokkos::Experimental::ViewTraits<D,P...> traits;
-  typedef typename Kokkos::Experimental::Impl::ViewMapping< void, traits, Sacado::Fad::Partition<Stride> >::type DstViewType;
+  typedef Kokkos::ViewTraits<D,P...> traits;
+  typedef typename Kokkos::Impl::ViewMapping< void, traits, Sacado::Fad::Partition<Stride> >::type DstViewType;
   const Sacado::Fad::Partition<Stride> part( offset , stride );
   return DstViewType(src, part);
 }
@@ -210,7 +304,7 @@ struct ThreadLocalScalarType<
   ViewType,
   typename std::enable_if< is_view_fad_contiguous<ViewType>::value >::type > {
   typedef typename ViewType::traits TraitsType;
-  typedef Experimental::Impl::ViewMapping<TraitsType, void> MappingType;
+  typedef Impl::ViewMapping<TraitsType, void> MappingType;
   typedef typename MappingType::thread_local_scalar_type type;
 };
 
@@ -289,7 +383,6 @@ struct ViewFill<
 //----------------------------------------------------------------------------
 
 namespace Kokkos {
-namespace Experimental {
 namespace Impl {
 
 template< class ... Args >
@@ -306,13 +399,11 @@ struct is_ViewSpecializeSacadoFadContiguous< Kokkos::View<D,P...> , Args... > {
 };
 
 } // namespace Impl
-} // namespace Experimental
 } // namespace Kokkos
 
 //----------------------------------------------------------------------------
 
 namespace Kokkos {
-namespace Experimental {
 namespace Impl {
 
 // Compute a partitioned fad size given a stride.  Return 0 if the stride
@@ -404,7 +495,7 @@ class ViewMapping< Traits , /* View internal mapping */
 private:
 
   template< class , class ... > friend class ViewMapping ;
-  template< class , class ... > friend class Kokkos::Experimental::View ;
+  template< class , class ... > friend class Kokkos::View ;
 
   typedef typename Traits::value_type  fad_type ;
   typedef typename Sacado::ValueType< fad_type >::type fad_value_type ;
@@ -950,10 +1041,23 @@ public:
     // Disallow padding
     typedef std::integral_constant< unsigned , 0 > padding ;
 
-    m_offset = offset_type( padding(), local_layout );
+    // Check if ViewCtorProp has CommonViewAllocProp - if so, retrieve the fad_size and append to layout
+    using CVTR = typename Kokkos::Impl::CommonViewAllocProp< typename Kokkos::Impl::ViewSpecializeSacadoFadContiguous 
+                                                           , typename Traits::value_type>;
+
+    enum { test_traits_check = Kokkos::Impl::check_has_common_view_alloc_prop< P... >::value };
+
+    typename Traits::array_layout internal_layout = 
+                            (test_traits_check == true
+                             && ((Kokkos::Impl::ViewCtorProp<void, CVTR> const &)prop).value.is_view_type) 
+                            ? Kokkos::Impl::appendFadToLayoutViewAllocHelper< Traits, ctor_prop >::returnNewLayoutPlusFad(prop, local_layout) 
+                            : local_layout;
+
+    m_offset = offset_type( padding(), internal_layout );
+
     m_array_offset =
       array_offset_type( padding() ,
-                         create_fad_array_layout<unsigned(Rank), unsigned(FadStaticDimension)>( local_layout ) );
+                         create_fad_array_layout<unsigned(Rank), unsigned(FadStaticDimension)>( internal_layout ) );
     const unsigned fad_dim =
       getFadDimension<unsigned(Rank)>( m_array_offset );
     if (unsigned(FadStaticDimension) == 0 && fad_dim == 0)
@@ -996,13 +1100,11 @@ public:
 };
 
 } // namespace Impl
-} // namespace Experimental
 } // namespace Kokkos
 
 //----------------------------------------------------------------------------
 
 namespace Kokkos {
-namespace Experimental {
 namespace Impl {
 
 /**\brief  Assign compatible Sacado FAD view mappings.
@@ -1028,7 +1130,7 @@ public:
 
   enum { is_assignable = true };
 
-  typedef Kokkos::Experimental::Impl::SharedAllocationTracker  TrackType ;
+  typedef Kokkos::Impl::SharedAllocationTracker  TrackType ;
   typedef ViewMapping< DstTraits , void >  DstType ;
   typedef ViewMapping< SrcTraits , void >  SrcFadType ;
 
@@ -1119,7 +1221,7 @@ public:
 
   enum { is_assignable = true };
 
-  typedef Kokkos::Experimental::Impl::SharedAllocationTracker  TrackType ;
+  typedef Kokkos::Impl::SharedAllocationTracker  TrackType ;
   typedef ViewMapping< DstTraits , void >  DstType ;
   typedef ViewMapping< SrcTraits , void >  SrcFadType ;
 
@@ -1181,13 +1283,11 @@ public:
 };
 
 } // namespace Impl
-} // namespace Experimental
 } // namespace Kokkos
 
 //----------------------------------------------------------------------------
 
 namespace Kokkos {
-namespace Experimental {
 namespace Impl {
 
 // Subview mapping
@@ -1270,13 +1370,13 @@ private:
 
 public:
 
-  typedef Kokkos::Experimental::ViewTraits
+  typedef Kokkos::ViewTraits
     < data_type
     , array_layout
     , typename SrcTraits::device_type
     , typename SrcTraits::memory_traits > traits_type ;
 
-  typedef Kokkos::Experimental::View
+  typedef Kokkos::View
     < data_type
     , array_layout
     , typename SrcTraits::device_type
@@ -1337,13 +1437,11 @@ public:
 };
 
 } // namespace Impl
-} // namespace Experimental
 } // namespace Kokkos
 
 //---------------------------------------------------------------------------
 
 namespace Kokkos {
-namespace Experimental {
 namespace Impl {
 
 // Partition mapping
@@ -1398,7 +1496,6 @@ public:
 };
 
 } // namespace Impl
-} // namespace Experimental
 } // namespace Kokkos
 
 #endif // defined(HAVE_SACADO_VIEW_SPEC) && !defined(SACADO_DISABLE_FAD_VIEW_SPEC)

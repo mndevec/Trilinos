@@ -212,24 +212,25 @@ namespace MueLu {
         myPid(myPID_) {
       }
 
+      KOKKOS_INLINE_FUNCTION
       void operator()(const LO lnode) const {
         if(stridedBlockSize == 1) {
-	  if(procWinner(lnode,0) == myPid) {
-	    auto myAgg = vertex2AggId(lnode,0);
-	    LO myAggDofStart = aggSizes(myAgg);
-	    auto idx = Kokkos::atomic_fetch_add( &aggDofCount(myAgg), 1 );
-	    agg2RowMap(myAggDofStart + idx) = lnode;
-	  }        
+          if(procWinner(lnode,0) == myPid) {
+            auto myAgg = vertex2AggId(lnode,0);
+            LO myAggDofStart = aggSizes(myAgg);
+            auto idx = Kokkos::atomic_fetch_add( &aggDofCount(myAgg), 1 );
+            agg2RowMap(myAggDofStart + idx) = lnode;
+          }
         } else {
-	  if(procWinner(lnode,0) == myPid) {
-	    auto myAgg = vertex2AggId(lnode,0);
-	    LO myAggDofStart = aggSizes(myAgg);
-	    auto idx = Kokkos::atomic_fetch_add( &aggDofCount(myAgg), stridedBlockSize );
-	    for (LO k = 0; k< stridedBlockSize; k++) {
-	      agg2RowMap(myAggDofStart + idx + k) = lnode * stridedBlockSize +k;
-	    }
-	  }
-	}
+          if(procWinner(lnode,0) == myPid) {
+            auto myAgg = vertex2AggId(lnode,0);
+            LO myAggDofStart = aggSizes(myAgg);
+            auto idx = Kokkos::atomic_fetch_add( &aggDofCount(myAgg), stridedBlockSize );
+            for (LO k = 0; k< stridedBlockSize; k++) {
+              agg2RowMap(myAggDofStart + idx + k) = lnode * stridedBlockSize +k;
+            }
+          }
+        }
       }
     };
 
@@ -286,7 +287,7 @@ namespace MueLu {
         typedef Kokkos::ArithTraits<SC>     ATS;
         typedef typename ATS::magnitudeType Magnitude;
 
-        Magnitude norm = ATS::zero();
+        Magnitude norm = Kokkos::ArithTraits<Magnitude>::zero();
         for (decltype(aggSize) k = 0; k < aggSize; k++) {
           Magnitude dnorm = ATS::magnitude(fineNSRandom(agg2RowMapLO(aggRows(agg)+k),0));
           norm += dnorm*dnorm;
@@ -410,6 +411,9 @@ namespace MueLu {
           // do local QR decomposition
           matrix_copy(localQR,z);
 
+          typedef typename ATS::magnitudeType Magnitude;
+          Magnitude zeroMagnitude = Kokkos::ArithTraits<Magnitude>::zero();
+
           for(decltype(localQR.dimension_0()) k = 0; k < localQR.dimension_0() && k < localQR.dimension_1()/*-1*/; k++) {
             // extract minor parts from mat
             matrix_clear(r);  // zero out temporary matrix (there is some potential to speed this up by avoiding this)
@@ -420,7 +424,7 @@ namespace MueLu {
             for(decltype(x.dimension_0()) i = 0; i < x.dimension_0(); i++)
               x(i) = r(i,k);
             SC   xn = vnorm(x); // calculate 2-norm of current column vector
-            if(localQR(k,k) > 0) xn = -xn;
+            if(ATS::magnitude(localQR(k,k)) > zeroMagnitude) xn = -xn;
 
             // build k-th unit vector
             for(decltype(e.dimension_0()) i = 0; i < e.dimension_0(); i++)
@@ -600,7 +604,7 @@ namespace MueLu {
         SC one = ATS::one();
         for(decltype(v.dimension_0()) i = 0; i < v.dimension_0(); i++) {
           for(decltype(v.dimension_0()) j = 0; j < v.dimension_0(); j++) {
-            vmuldata(i,j) = -2 * v(i) * v(j);
+            vmuldata(i,j) = -2. * v(i) * v(j);
           }
         }
         for(decltype(v.dimension_0()) i = 0; i < v.dimension_0(); i++) {
@@ -883,9 +887,9 @@ namespace MueLu {
     {
       SubFactoryMonitor m2(*this, "Create Agg2RowMap", coarseLevel);
       // NOTE: This zeros itself on construction
-      aggSizeType aggDofCount("aggDofCount", numAggregates); 
+      aggSizeType aggDofCount("aggDofCount", numAggregates);
 
-     
+
       // atomic data access for agg2RowMapLO view
       //typename AppendTrait<decltype(agg2RowMapLO), Kokkos::Atomic>::type agg2RowMapLOAtomic = agg2RowMapLO;
 

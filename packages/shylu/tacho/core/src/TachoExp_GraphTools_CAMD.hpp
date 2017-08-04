@@ -14,52 +14,42 @@ typedef UF_long SuiteSparse_long;
 namespace Tacho {
 
   namespace Experimental {
+    template<typename OrdinalType>
+    class CAMD;
 
-    class CAMD {
+    template<>
+    class CAMD<int> {
     public:
-      template<typename OrdinalType>
-      static void run( OrdinalType n, OrdinalType Pe[], OrdinalType Iw[], 
-                       OrdinalType Len[], OrdinalType iwlen, OrdinalType pfree,
-                       OrdinalType Nv[], OrdinalType Next[], OrdinalType Last[],
-                       OrdinalType Head[], OrdinalType Elen[], OrdinalType Degree[],
-                       OrdinalType W[],
+      static void run( int n, int Pe[], int Iw[], 
+                       int Len[], int iwlen, int pfree,
+                       int Nv[], int Next[], int Last[],
+                       int Head[], int Elen[], int Degree[],
+                       int W[],
                        double Control[],
                        double Info[],
-                       const OrdinalType C[],
-                       OrdinalType BucketSet[] ) {
-        TACHO_TEST_FOR_EXCEPTION(true, 
-                                 std::logic_error,
-                                 "GraphTools_CAMD:: CAMD does not support the templated ordinal type");
+                       const int C[],
+                       int BucketSet[] ) {
+        TACHO_CHOLMOD(camd_2)( n, Pe, Iw, Len, iwlen, pfree, 
+                               Nv, Next, Last, Head, Elen, Degree, W, Control, Info, C, BucketSet );
       }
     };
   
-    template<> 
-    void CAMD::run<int>( int n, int Pe[], int Iw[], 
-                         int Len[], int iwlen, int pfree,
-                         int Nv[], int Next[], int Last[],
-                         int Head[], int Elen[], int Degree[],
-                         int W[],
-                         double Control[],
-                         double Info[],
-                         const int C[],
-                         int BucketSet[] ) {
-      TACHO_CHOLMOD(camd_2)( n, Pe, Iw, Len, iwlen, pfree, 
-                             Nv, Next, Last, Head, Elen, Degree, W, Control, Info, C, BucketSet );
-    }
-  
-    template<> 
-    void CAMD::run<SuiteSparse_long>( SuiteSparse_long n, SuiteSparse_long Pe[], SuiteSparse_long Iw[], 
-                                      SuiteSparse_long Len[], SuiteSparse_long iwlen, SuiteSparse_long pfree,
-                                      SuiteSparse_long Nv[], SuiteSparse_long Next[], SuiteSparse_long Last[],
-                                      SuiteSparse_long Head[], SuiteSparse_long Elen[], SuiteSparse_long Degree[],
-                                      SuiteSparse_long W[],
-                                      double Control[],
-                                      double Info[],
-                                      const SuiteSparse_long C[],
-                                      SuiteSparse_long BucketSet[] ) {
-      TACHO_CHOLMOD(camd_l2)( n, Pe, Iw, Len, iwlen, pfree, 
-                              Nv, Next, Last, Head, Elen, Degree, W, Control, Info, C, BucketSet );
-    }
+    template<>
+    class CAMD<SuiteSparse_long> {
+    public:
+      static void run( SuiteSparse_long n, SuiteSparse_long Pe[], SuiteSparse_long Iw[], 
+                       SuiteSparse_long Len[], SuiteSparse_long iwlen, SuiteSparse_long pfree,
+                       SuiteSparse_long Nv[], SuiteSparse_long Next[], SuiteSparse_long Last[],
+                       SuiteSparse_long Head[], SuiteSparse_long Elen[], SuiteSparse_long Degree[],
+                       SuiteSparse_long W[],
+                       double Control[],
+                       double Info[],
+                       const SuiteSparse_long C[],
+                       SuiteSparse_long BucketSet[] ) {
+        TACHO_CHOLMOD(camd_l2)( n, Pe, Iw, Len, iwlen, pfree, 
+                                Nv, Next, Last, Head, Elen, Degree, W, Control, Info, C, BucketSet );          
+      }
+    };
   
     class GraphTools_CAMD {    
     public:
@@ -75,7 +65,7 @@ namespace Tacho {
       // CAMD output
       ordinal_type_array _pe, _nv, _el, _next, _perm, _peri; // perm = last, peri = next
       
-      double _control[CAMD_CONTROL], _info[CAMD_INFO];
+      double _control[TRILINOS_CAMD_CONTROL], _info[TRILINOS_CAMD_INFO];
       
       bool _is_ordered;
 
@@ -112,7 +102,10 @@ namespace Tacho {
             _cnst(peri(j)) = i;
       }
       
-      void reorder() {
+      void reorder(const ordinal_type verbose = 0) {
+        Kokkos::Impl::Timer timer;
+        double t_camd = 0;
+
         TACHO_CHOLMOD(camd_defaults)(_control);
         TACHO_CHOLMOD(camd_control)(_control);
 
@@ -156,12 +149,14 @@ namespace Tacho {
         for (size_type i=0;i<pfree;++i)
           iw_ptr[i] = cidx[i];
 
-        CAMD::run<ordinal_type>(_m, pe_ptr, iw_ptr, lwork_ptr, iwlen, pfree,
+        timer.reset();
+        CAMD<ordinal_type>::run(_m, pe_ptr, iw_ptr, lwork_ptr, iwlen, pfree,
                                 // output
                                 nv_ptr, next, perm, hd_ptr, el_ptr, dg_ptr, wk_ptr, 
                                 _control, _info, cnst, bk_ptr);
-        
-        TACHO_TEST_FOR_EXCEPTION(_info[CAMD_STATUS] != CAMD_OK, 
+        t_camd = timer.seconds();
+
+        TACHO_TEST_FOR_EXCEPTION(_info[TRILINOS_CAMD_STATUS] != TRILINOS_CAMD_OK, 
                                  std::runtime_error,
                                  "CAMD fails");
 
@@ -169,6 +164,19 @@ namespace Tacho {
           _peri[_perm[i]] = i;
 
         _is_ordered = true;
+
+        if (verbose) {
+          printf("Summary: GraphTools (CAMD)\n");
+          printf("===========================\n");
+
+          switch (verbose) {
+          case 1: {
+            printf("  Time\n");
+            printf("             time for reordering: %10.6f s\n", t_camd);
+            printf("\n");
+          }
+          }
+        }
       }
 
 

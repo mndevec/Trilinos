@@ -138,6 +138,9 @@ LOCA.MultiContinuation supports the following classes:
 
 %import "Teuchos.i"
 
+// Learn about LOCA::Abstract::Iterator::StepStatus enumeration
+%import "LOCA_Abstract_Iterator.H"
+
 // Teucho::RCP support
 %teuchos_rcp(LOCA::Extended::MultiAbstractGroup)
 %teuchos_rcp(LOCA::MultiContinuation::AbstractGroup)
@@ -145,6 +148,15 @@ LOCA.MultiContinuation supports the following classes:
 %teuchos_rcp(LOCA::MultiContinuation::ConstraintInterface)
 %teuchos_rcp(LOCA::MultiContinuation::ConstraintInterfaceMVDX)
 %teuchos_rcp(LOCA::MultiContinuation::Factory)
+
+// Allow import from this directory
+%pythoncode
+%{
+import sys, os.path as op
+thisDir = op.dirname(op.abspath(__file__))
+if not thisDir in sys.path: sys.path.append(thisDir)
+del sys, op
+%}
 
 // Import base class declarations
 %import "NOX.Abstract.i"

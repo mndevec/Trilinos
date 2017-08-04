@@ -77,7 +77,7 @@ namespace Intrepid2 {
       const auto input_y = Kokkos::subview(input, Kokkos::ALL(), range_type(1,2));
       const auto input_z = Kokkos::subview(input, Kokkos::ALL(), range_type(2,3));
 
-      const int fad = (Kokkos::is_view_fad<workViewType>::value ? Kokkos::dimension_scalar(work) : 1);
+      const int work_line_size = work.size()/6;
 
       switch (opType) {
       case OPERATOR_VALUE: {
@@ -85,19 +85,18 @@ namespace Intrepid2 {
 
         Kokkos::DynRankView<typename workViewType::value_type,
             typename workViewType::memory_space> workLine(ptr, cardLine, npts);
-        ptr += (cardLine*npts*fad);
+        ptr += work_line_size;
 
         Kokkos::DynRankView<typename workViewType::value_type,
             typename workViewType::memory_space> outputLine_A(ptr, cardLine, npts);
-        ptr += (cardLine*npts*fad);
+        ptr += work_line_size;
 
         Kokkos::DynRankView<typename workViewType::value_type,
             typename workViewType::memory_space> outputLine_B(ptr, cardLine, npts);
-        ptr += (cardLine*npts*fad);
+        ptr += work_line_size;
 
         Kokkos::DynRankView<typename workViewType::value_type,
             typename workViewType::memory_space> outputBubble(ptr, cardBubble, npts);
-        ptr += (cardBubble*npts*fad);
 
         // tensor product
         ordinal_type idx = 0;
@@ -180,32 +179,31 @@ namespace Intrepid2 {
 
         Kokkos::DynRankView<typename workViewType::value_type,
             typename workViewType::memory_space> workLine(ptr, cardLine, npts);
-        ptr += (cardLine*npts*fad);
+        ptr += work_line_size;
 
         // Bubble value
         Kokkos::DynRankView<typename workViewType::value_type,
             typename workViewType::memory_space> outputBubble(ptr, cardBubble, npts);
-        ptr += (cardBubble*npts*fad);
+        ptr += work_line_size;
 
         // A line value
         Kokkos::DynRankView<typename workViewType::value_type,
             typename workViewType::memory_space> outputLine_A(ptr, cardLine, npts);
-        ptr += (cardLine*npts*fad);
+        ptr += work_line_size;
 
         // A line grad
         Kokkos::DynRankView<typename workViewType::value_type,
             typename workViewType::memory_space> outputLine_DA(ptr, cardLine, npts, 1);
-        ptr += (cardLine*npts*fad);
+        ptr += work_line_size;
 
         // B line value
         Kokkos::DynRankView<typename workViewType::value_type,
             typename workViewType::memory_space> outputLine_B(ptr, cardLine, npts);
-        ptr += (cardLine*npts*fad);
+        ptr += work_line_size;
 
         // B line grad
         Kokkos::DynRankView<typename workViewType::value_type,
             typename workViewType::memory_space> outputLine_DB(ptr, cardLine, npts, 1);
-        ptr += (cardLine*npts*fad);
 
         // tensor product
         ordinal_type idx = 0;
@@ -600,8 +598,8 @@ namespace Intrepid2 {
         for (ordinal_type j=0;j<cardLine;++j) { // y
           for (ordinal_type i=0;i<cardLine;++i,++idx) { // x
             dofCoordsHost(idx,0) = dofCoordsLineHost(i,0);
-            dofCoordsHost(idx,2) = dofCoordsLineHost(j,0);
-            dofCoordsHost(idx,1) = dofCoordsBubbleHost(k,0);
+            dofCoordsHost(idx,1) = dofCoordsLineHost(j,0);
+            dofCoordsHost(idx,2) = dofCoordsBubbleHost(k,0);
           }
         }
       }

@@ -112,7 +112,7 @@ namespace Xpetra {
           numAllElements += maps[v]->getGlobalNumElements();
         }
         TEUCHOS_TEST_FOR_EXCEPTION(fullmap->getGlobalNumElements() != numAllElements, std::logic_error,
-                                   "logic error. full map and sub maps have not same number of elements. We cannot build MapExtractor with Xpetra-style numbering. Please make sure that you want Xpetra-style numbering instead of Thyra-style numbering.");
+                                   "logic error. full map and sub maps have not same number of elements (" << fullmap->getGlobalNumElements() <<" versus " << numAllElements << "). We cannot build MapExtractor with Xpetra-style numbering. Please make sure that you want Xpetra-style numbering instead of Thyra-style numbering.");
 
         fullmap_ = fullmap;
         maps_ = maps;
@@ -283,13 +283,13 @@ namespace Xpetra {
     //! Return the process ranks and corresponding local indices for the given global indices.
     virtual LookupStatus getRemoteIndexList(const Teuchos::ArrayView< const GlobalOrdinal > &GIDList, const Teuchos::ArrayView< int > &nodeIDList, const Teuchos::ArrayView< LocalOrdinal > &LIDList) const {
       throw Xpetra::Exceptions::RuntimeError("BlockedMap::getRemoteIndexList: routine not implemented.");
-      return IDNotPresent;
+      TEUCHOS_UNREACHABLE_RETURN(IDNotPresent);
     };
 
     //! Return the process ranks for the given global indices.
     virtual LookupStatus getRemoteIndexList(const Teuchos::ArrayView< const GlobalOrdinal > &GIDList, const Teuchos::ArrayView< int > &nodeIDList) const {
       throw Xpetra::Exceptions::RuntimeError("BlockedMap::getRemoteIndexList: routine not implemented.");
-      return IDNotPresent;
+      TEUCHOS_UNREACHABLE_RETURN(IDNotPresent);
     };
 
     //! Return a view of the global indices owned by this process.
@@ -311,7 +311,7 @@ namespace Xpetra {
     //! True if this Map is distributed contiguously, else false.
     virtual bool isContiguous() const {
       throw Xpetra::Exceptions::RuntimeError("BlockedMap::isContiguous: routine not implemented.");
-      return false;
+      TEUCHOS_UNREACHABLE_RETURN(false);
     };
 
     //! Whether this Map is globally distributed or locally replicated.

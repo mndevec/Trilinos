@@ -21,7 +21,7 @@ SET(HAVE_STOKHOS_DAKOTA ${${PACKAGE_NAME}_ENABLE_TriKota})
 # OpenMP support -- Add our own option to turn it off
 # without turning it off globally
 SET(Stokhos_ENABLE_OpenMP_Default OFF)
-IF(Trilinos_ENABLE_OpenMP)
+IF(${PROJECT_NAME}_ENABLE_OpenMP)
   SET(Stokhos_ENABLE_OpenMP_Default ON)
 ENDIF()
 TRIBITS_ADD_OPTION_AND_DEFINE(
@@ -512,6 +512,8 @@ IF (Stokhos_ENABLE_Sacado)
       sacado/kokkos/vector/Fad/Sacado_Fad_SFad_MP_Vector.hpp
       sacado/kokkos/vector/Fad/Sacado_Fad_SLFad_MP_Vector.hpp
       sacado/kokkos/vector/Fad/Sacado_Fad_ViewFad_MP_Vector.hpp
+      sacado/kokkos/vector/Fad/Sacado_Fad_Exp_MP_Vector.hpp
+      sacado/kokkos/vector/Fad/Sacado_Fad_MP_Vector.hpp
       )
   ENDIF()
   IF(Stokhos_ENABLE_PCE_Scalar_Type)

@@ -51,7 +51,7 @@
 #include "Ifpack2_Relaxation_decl.hpp"
 
 #ifdef HAVE_IFPACK2_EXPERIMENTAL_KOKKOSKERNELS_FEATURES
-#  include "KokkosKernels_GaussSeidel.hpp"
+#  include "KokkosSparse_gauss_seidel.hpp"
 #endif // HAVE_IFPACK2_EXPERIMENTAL_KOKKOSKERNELS_FEATURES
 
 #ifdef HAVE_IFPACK2_DUMP_MTX_MATRIX
@@ -615,7 +615,7 @@ void Relaxation<MatrixType>::initialize ()
     local_matrix_type kcsr = crsMat->getLocalMatrix ();
 
     const bool is_symmetric = (PrecType_ == Ifpack2::Details::MTSGS);
-    using KokkosKernels::Experimental::Graph::gauss_seidel_symbolic;
+    using KokkosSparse::Experimental::gauss_seidel_symbolic;
     gauss_seidel_symbolic<mt_kernel_handle_type,
       lno_row_view_t,
       lno_nonzero_view_t> (mtKernelHandle_.getRawPtr (),
@@ -1194,7 +1194,7 @@ void Relaxation<MatrixType>::compute ()
       local_matrix_type kcsr = crsMat->getLocalMatrix ();
 
       const bool is_symmetric = (PrecType_ == Ifpack2::Details::MTSGS);
-      using KokkosKernels::Experimental::Graph::gauss_seidel_numeric;
+      using KokkosSparse::Experimental::gauss_seidel_numeric;
       gauss_seidel_numeric<mt_kernel_handle_type,
         lno_row_view_t,
         lno_nonzero_view_t,
@@ -1951,6 +1951,7 @@ MTGaussSeidel (const crs_matrix_type* crsMat,
   bool update_y_vector = true;
   //false as it was done up already, and we dont want to zero it in each sweep.
   bool zero_x_vector = false;
+  
   for (int sweep = 0; sweep < numSweeps; ++sweep) {
     if (! importer.is_null () && sweep > 0) {
       // We already did the first Import for the zeroth sweep above,
@@ -1960,7 +1961,7 @@ MTGaussSeidel (const crs_matrix_type* crsMat,
 
     for (size_t indVec = 0; indVec < NumVectors; ++indVec) {
       if (direction == Tpetra::Symmetric) {
-        KokkosKernels::Experimental::Graph::symmetric_gauss_seidel_apply
+        KokkosSparse::Experimental::symmetric_gauss_seidel_apply
         (mtKernelHandle_.getRawPtr(), A_->getNodeNumRows(), A_->getNodeNumCols(),
             kcsr.graph.row_map, kcsr.graph.entries, kcsr.values,
             Kokkos::subview(X_colMap->template getLocalView<MyExecSpace> (), Kokkos::ALL (), indVec),
@@ -1968,7 +1969,7 @@ MTGaussSeidel (const crs_matrix_type* crsMat,
             zero_x_vector, update_y_vector);
       }
       else if (direction == Tpetra::Forward) {
-        KokkosKernels::Experimental::Graph::forward_sweep_gauss_seidel_apply
+        KokkosSparse::Experimental::forward_sweep_gauss_seidel_apply
         (mtKernelHandle_.getRawPtr(), A_->getNodeNumRows(), A_->getNodeNumCols(),
             kcsr.graph.row_map,kcsr.graph.entries, kcsr.values,
             Kokkos::subview(X_colMap->template getLocalView<MyExecSpace> (), Kokkos::ALL (), indVec ),
@@ -1976,7 +1977,7 @@ MTGaussSeidel (const crs_matrix_type* crsMat,
             zero_x_vector, update_y_vector);
       }
       else if (direction == Tpetra::Backward) {
-        KokkosKernels::Experimental::Graph::backward_sweep_gauss_seidel_apply
+        KokkosSparse::Experimental::backward_sweep_gauss_seidel_apply
         (mtKernelHandle_.getRawPtr(), A_->getNodeNumRows(), A_->getNodeNumCols(),
             kcsr.graph.row_map,kcsr.graph.entries, kcsr.values,
             Kokkos::subview(X_colMap->template getLocalView<MyExecSpace> (), Kokkos::ALL (), indVec ),

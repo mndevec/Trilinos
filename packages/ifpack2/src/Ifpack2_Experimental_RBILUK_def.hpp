@@ -51,9 +51,9 @@
 #include <Ifpack2_RILUK.hpp>
 
 //#define IFPACK2_TIME_IMPROVE
-#define IFPACK2_IMPROVE
+//#define IFPACK2_RBILUK_IMPROVE
 
-#ifdef IFPACK2_IMPROVE
+#ifdef IFPACK2_RBILUK_IMPROVE
 #include <KokkosKernels_Gemm_Decl.hpp>
 #include <KokkosKernels_Gemm_Serial_Impl.hpp>
 #include <KokkosKernels_Util.hpp>
@@ -259,7 +259,7 @@ void RBILUK<MatrixType>::initialize ()
 
     this->Graph_->initialize ();
     allocate_L_and_U_blocks ();
-#ifndef IFPACK2_IMPROVE
+#ifndef IFPACK2_RBILUK_IMPROVE
     initAllValues (*A_block_);
 #endif
   } // Stop timing
@@ -610,7 +610,7 @@ void RBILUK<MatrixType>::compute ()
 
 
       scalar_type diagmod = STM::zero (); // Off-diagonal accumulator
-#ifdef IFPACK2_IMPROVE
+#ifdef IFPACK2_RBILUK_IMPROVE
       for (local_ordinal_type i = 0; i < blockSize_; ++i)
         for (local_ordinal_type j = 0; j < blockSize_; ++j){
           {
@@ -635,7 +635,7 @@ void RBILUK<MatrixType>::compute ()
 
         const little_block_type dmatInverse = D_block_->getLocalBlock(j,j);
         // alpha = 1, beta = 0
-#ifdef IFPACK2_IMPROVE
+#ifdef IFPACK2_RBILUK_IMPROVE
         KokkosKernels::Batched::Experimental::Serial::Gemm
           <KokkosKernels::Batched::Experimental::Trans::NoTranspose,
           KokkosKernels::Batched::Experimental::Trans::NoTranspose,
@@ -660,7 +660,7 @@ void RBILUK<MatrixType>::compute ()
             if (kk > -1) {
               little_block_type kkval((typename little_block_type::value_type*) &InV[kk*blockMatSize], blockSize_, rowStride);
               little_block_type uumat((typename little_block_type::value_type*) &UUV[k*blockMatSize], blockSize_, rowStride);
-#ifdef IFPACK2_IMPROVE
+#ifdef IFPACK2_RBILUK_IMPROVE
         KokkosKernels::Batched::Experimental::Serial::Gemm
           <KokkosKernels::Batched::Experimental::Trans::NoTranspose,
           KokkosKernels::Batched::Experimental::Trans::NoTranspose,
@@ -681,7 +681,7 @@ void RBILUK<MatrixType>::compute ()
             little_block_type uumat((typename little_block_type::value_type*) &UUV[k*blockMatSize], blockSize_, rowStride);
             if (kk > -1) {
               little_block_type kkval((typename little_block_type::value_type*) &InV[kk*blockMatSize], blockSize_, rowStride);
-#ifdef IFPACK2_IMPROVE
+#ifdef IFPACK2_RBILUK_IMPROVE
         KokkosKernels::Batched::Experimental::Serial::Gemm
           <KokkosKernels::Batched::Experimental::Trans::NoTranspose,
           KokkosKernels::Batched::Experimental::Trans::NoTranspose,
@@ -694,7 +694,7 @@ void RBILUK<MatrixType>::compute ()
               //blockMatOpts.square_matrix_matrix_multiply(reinterpret_cast<impl_scalar_type*>(multiplier.ptr_on_device ()), reinterpret_cast<impl_scalar_type*>(uumat.ptr_on_device ()), reinterpret_cast<impl_scalar_type*>(kkval.ptr_on_device ()), blockSize_, -STM::one(), STM::one());
             }
             else {
-#ifdef IFPACK2_IMPROVE
+#ifdef IFPACK2_RBILUK_IMPROVE
         KokkosKernels::Batched::Experimental::Serial::Gemm
           <KokkosKernels::Batched::Experimental::Trans::NoTranspose,
           KokkosKernels::Batched::Experimental::Trans::NoTranspose,
@@ -769,7 +769,7 @@ void RBILUK<MatrixType>::compute ()
       for (local_ordinal_type j = 0; j < NumU; ++j) {
         little_block_type currentVal((typename little_block_type::value_type*) &InV[(NumL+1+j)*blockMatSize], blockSize_, rowStride); // current_mults++;
         // scale U by the diagonal inverse
-#ifdef IFPACK2_IMPROVE
+#ifdef IFPACK2_RBILUK_IMPROVE
         KokkosKernels::Batched::Experimental::Serial::Gemm
           <KokkosKernels::Batched::Experimental::Trans::NoTranspose,
           KokkosKernels::Batched::Experimental::Trans::NoTranspose,
@@ -793,7 +793,7 @@ void RBILUK<MatrixType>::compute ()
       time_1.reset();
 #endif
 
-#ifdef IFPACK2_IMPROVE
+#ifdef IFPACK2_RBILUK_IMPROVE
       // Reset column flags
       for (size_t j = 0; j < NumIn; ++j) {
         colflag[InI[j]] = -1;

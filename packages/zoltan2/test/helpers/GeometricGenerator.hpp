@@ -1432,7 +1432,7 @@ private:
         }
         else if(paramName == "dim"){
           int dim = fromString<int>(getParamVal<std::string>(pe, paramName));
-          if(dim < 2 && dim > 3){
+          if(dim < 1 && dim > 3){
             throw INVALID(paramName);
           } else {
             this->coordinate_dimension = dim;

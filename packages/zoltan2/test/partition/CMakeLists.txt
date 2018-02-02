@@ -13,12 +13,6 @@ ENDIF()
 TRIBITS_ADD_EXECUTABLE(
     mjSort
     SOURCES MultiJaggedSortingTest.cpp
-    NUM_MPI_PROCS 4
-    COMM serial mpi
-    ARGS
-    "I=1.03 P=2,2 O=0 C=4 F=simple TB=1"
-    PASS_REGULAR_EXPRESSION "PASS"
-    FAIL_REGULAR_EXPRESSION "FAIL"
 )
   
 # MultiJagged Tests

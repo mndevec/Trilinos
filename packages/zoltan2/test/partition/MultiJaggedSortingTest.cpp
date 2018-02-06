@@ -63,10 +63,25 @@
 #include <Teuchos_LAPACK.hpp>
 #include <fstream>
 #include <string>
+#include <parallel/algorithm>
+
 using namespace std;
 using Teuchos::RCP;
 using Teuchos::rcp;
-
+/*
+#ifndef HAVE_TPETRA_EXPLICIT_INSTANTIATION
+typedef double my_zscalar_t;
+typedef long long my_zlno_t;
+typedef long long my_zgno_t;
+#else
+typedef zscalar_t my_zscalar_t;
+typedef zlno_t my_zlno_t;
+typedef zgno_t my_zgno_t;
+#endif
+*/
+typedef zscalar_t my_zscalar_t;
+typedef zlno_t my_zlno_t;
+typedef zgno_t my_zgno_t;
 
 //#define hopper_separate_test
 #ifdef hopper_separate_test
@@ -117,7 +132,7 @@ using Teuchos::rcp;
         }
 
 
-typedef Tpetra::MultiVector<zscalar_t, zlno_t, zgno_t, znode_t> tMVector_t;
+typedef Tpetra::MultiVector<my_zscalar_t, my_zlno_t, my_zgno_t, znode_t> tMVector_t;
 
 /*! \test MultiJaggedTest.cpp
     An example of the use of the MultiJagged algorithm to partition coordinate data.
@@ -180,7 +195,7 @@ int run_pointAssign_tests(
 
     // pointAssign tests
     int coordDim = coords->getNumVectors();
-    zscalar_t *pointDrop = new zscalar_t[coordDim];
+    my_zscalar_t *pointDrop = new my_zscalar_t[coordDim];
     typename Adapter::part_t part = -1;
 
     char mechar[10];
@@ -229,12 +244,12 @@ int run_pointAssign_tests(
     }
 
     {
-      const vector<Zoltan2::coordinateModelPartBox<zscalar_t,
+      const vector<Zoltan2::coordinateModelPartBox<my_zscalar_t,
                                                    typename Adapter::part_t> >
             pBoxes = problem->getSolution().getPartBoxesView();
       for (size_t i = 0; i < pBoxes.size(); i++) {
-        zscalar_t *lmin = pBoxes[i].getlmins();
-        zscalar_t *lmax = pBoxes[i].getlmaxs();;
+        my_zscalar_t *lmin = pBoxes[i].getlmins();
+        my_zscalar_t *lmax = pBoxes[i].getlmaxs();;
         std::cout << me << " pBox " << i << " pid " << pBoxes[i].getpId()
                   << " (" << lmin[0] << "," << lmin[1] << ","
                   << (coordDim > 2 ? lmin[2] : 0) << ") x "
@@ -308,14 +323,14 @@ int run_boxAssign_tests(
 
     // boxAssign tests
     int coordDim = coords->getNumVectors();
-    zscalar_t *lower = new zscalar_t[coordDim];
-    zscalar_t *upper = new zscalar_t[coordDim];
+    my_zscalar_t *lower = new my_zscalar_t[coordDim];
+    my_zscalar_t *upper = new my_zscalar_t[coordDim];
 
     char mechar[10];
     sprintf(mechar, "%d", problem->getComm()->getRank());
     string me(mechar);
 
-    const vector<Zoltan2::coordinateModelPartBox<zscalar_t,
+    const vector<Zoltan2::coordinateModelPartBox<my_zscalar_t,
                                                  typename Adapter::part_t> >
           pBoxes = problem->getSolution().getPartBoxesView();
     size_t nBoxes = pBoxes.size();
@@ -326,7 +341,7 @@ int run_boxAssign_tests(
       typename Adapter::part_t *parts;
       size_t pickabox = nBoxes / 2;
       for (int i = 0; i < coordDim; i++) {
-        zscalar_t dd = 0.2 * (pBoxes[pickabox].getlmaxs()[i] -
+        my_zscalar_t dd = 0.2 * (pBoxes[pickabox].getlmaxs()[i] -
                               pBoxes[pickabox].getlmins()[i]);
         lower[i] = pBoxes[pickabox].getlmins()[i] + dd;
         upper[i] = pBoxes[pickabox].getlmaxs()[i] - dd;
@@ -352,7 +367,7 @@ int run_boxAssign_tests(
       typename Adapter::part_t *parts;
       size_t pickabox = nBoxes / 2;
       for (int i = 0; i < coordDim; i++) {
-        zscalar_t dd = 0.2 * (pBoxes[pickabox].getlmaxs()[i] -
+        my_zscalar_t dd = 0.2 * (pBoxes[pickabox].getlmaxs()[i] -
                               pBoxes[pickabox].getlmins()[i]);
         lower[i] = pBoxes[pickabox].getlmins()[i] - dd;
         upper[i] = pBoxes[pickabox].getlmaxs()[i] + dd;
@@ -395,8 +410,8 @@ int run_boxAssign_tests(
       size_t nparts;
       typename Adapter::part_t *parts;
       for (int i = 0; i < coordDim; i++) {
-        lower[i] = std::numeric_limits<zscalar_t>::max();
-        upper[i] = std::numeric_limits<zscalar_t>::min();
+        lower[i] = std::numeric_limits<my_zscalar_t>::max();
+        upper[i] = std::numeric_limits<my_zscalar_t>::min();
       }
       for (size_t j = 0; j < nBoxes; j++) {
         for (int i = 0; i < coordDim; i++) {
@@ -556,27 +571,27 @@ void readGeoGenParams(string paramFileName, Teuchos::ParameterList &geoparams, c
 
 //given the part numbers for each local coordinate,
 //distributes the coordinates to the corresponding processors.
-void distribute_points(const int *coordinate_grid_parts, zscalar_t **coords, zlno_t &numLocalCoords, int coordinate_dimension, RCP<const Teuchos::Comm<int> > comm){
+void distribute_points(const int *coordinate_grid_parts, my_zscalar_t **coords, my_zlno_t &numLocalCoords, int coordinate_dimension, RCP<const Teuchos::Comm<int> > comm){
 	  Tpetra::Distributor distributor(comm);
 	  ArrayView<const int> pIds( coordinate_grid_parts, numLocalCoords);
 	  /*
 	  std::cout << "numLocalCoords:" << numLocalCoords << std::endl;
-      for (zlno_t j = 0; j < numLocalCoords; ++j){
+      for (my_zlno_t j = 0; j < numLocalCoords; ++j){
     	  std::cout << "pIds["<<j <<"]:" << pIds[j] << std::endl;
       }
       */
-	  zgno_t numMyNewGnos = distributor.createFromSends(pIds);
+	  my_zgno_t numMyNewGnos = distributor.createFromSends(pIds);
 	  numLocalCoords = numMyNewGnos;
 
-	  ArrayRCP<zscalar_t> recvBuf2(distributor.getTotalReceiveLength());
+	  ArrayRCP<my_zscalar_t> recvBuf2(distributor.getTotalReceiveLength());
 	  //std::cout << "coordinate_dimension:" << coordinate_dimension << std::endl;
 	  for (int i = 0; i < coordinate_dimension; ++i){
-		  ArrayView<zscalar_t> s(coords[i], numLocalCoords);
-	      distributor.doPostsAndWaits<zscalar_t>(s, 1, recvBuf2());
+		  ArrayView<my_zscalar_t> s(coords[i], numLocalCoords);
+	      distributor.doPostsAndWaits<my_zscalar_t>(s, 1, recvBuf2());
 		  delete [] coords[i];
-		  coords[i] = new zscalar_t[numLocalCoords];
+		  coords[i] = new my_zscalar_t[numLocalCoords];
 #pragma omp parallel for
-	      for (zlno_t j = 0; j < numLocalCoords; ++j){
+	      for (my_zlno_t j = 0; j < numLocalCoords; ++j){
 	    	  coords[i][j] = recvBuf2[j];
 	    	  //std::cout << "i:" << i << "j:" << j <<  " coords[i][j]:" << coords[i][j] << " recvBuf2[j]:" << recvBuf2[j] << std::endl;
 	      }
@@ -590,7 +605,7 @@ int GeometricGenInterface(RCP<const Teuchos::Comm<int> > &comm,
         int k,
         int migration_check_option,
         int migration_all_to_all_type,
-        zscalar_t migration_imbalance_cut_off,
+        my_zscalar_t migration_imbalance_cut_off,
         int migration_processor_assignment_type,
         int migration_doMigration_type,
         bool test_boxes,
@@ -601,42 +616,42 @@ int GeometricGenInterface(RCP<const Teuchos::Comm<int> > &comm,
     int ierr = 0;
     Teuchos::ParameterList geoparams("geo params");
     readGeoGenParams(paramFile, geoparams, comm);
-    GeometricGen::GeometricGenerator<zscalar_t, zlno_t, zgno_t, znode_t> *gg =
-    new GeometricGen::GeometricGenerator<zscalar_t,zlno_t,zgno_t,znode_t>(geoparams,
+    GeometricGen::GeometricGenerator<my_zscalar_t, my_zlno_t, my_zgno_t, znode_t> *gg =
+    new GeometricGen::GeometricGenerator<my_zscalar_t,my_zlno_t,my_zgno_t,znode_t>(geoparams,
                                                                       comm);
 
     int coord_dim = gg->getCoordinateDimension();
     int numWeightsPerCoord = gg->getNumWeights();
-    zlno_t numLocalPoints = gg->getNumLocalCoords();
-    zgno_t numGlobalPoints = gg->getNumGlobalCoords();
-    zscalar_t **coords = new zscalar_t * [coord_dim];
+    my_zlno_t numLocalPoints = gg->getNumLocalCoords();
+    my_zgno_t numGlobalPoints = gg->getNumGlobalCoords();
+    my_zscalar_t **coords = new my_zscalar_t * [coord_dim];
     for(int i = 0; i < coord_dim; ++i){
-        coords[i] = new zscalar_t[numLocalPoints];
+        coords[i] = new my_zscalar_t[numLocalPoints];
     }
     gg->getLocalCoordinatesCopy(coords);
-    zscalar_t **weight = NULL;
+    my_zscalar_t **weight = NULL;
     if (numWeightsPerCoord) {
-        weight= new zscalar_t * [numWeightsPerCoord];
+        weight= new my_zscalar_t * [numWeightsPerCoord];
         for(int i = 0; i < numWeightsPerCoord; ++i){
-            weight[i] = new zscalar_t[numLocalPoints];
+            weight[i] = new my_zscalar_t[numLocalPoints];
         }
         gg->getLocalWeightsCopy(weight);
     }
 
     delete gg;
 
-    RCP<Tpetra::Map<zlno_t, zgno_t, znode_t> > mp = rcp(
-                new Tpetra::Map<zlno_t, zgno_t, znode_t>(numGlobalPoints,
+    RCP<Tpetra::Map<my_zlno_t, my_zgno_t, znode_t> > mp = rcp(
+                new Tpetra::Map<my_zlno_t, my_zgno_t, znode_t>(numGlobalPoints,
                                                       numLocalPoints, 0, comm));
 
-    Teuchos::Array<Teuchos::ArrayView<const zscalar_t> > coordView(coord_dim);
+    Teuchos::Array<Teuchos::ArrayView<const my_zscalar_t> > coordView(coord_dim);
     for (int i=0; i < coord_dim; i++){
         if(numLocalPoints > 0){
-            Teuchos::ArrayView<const zscalar_t> a(coords[i], numLocalPoints);
+            Teuchos::ArrayView<const my_zscalar_t> a(coords[i], numLocalPoints);
             coordView[i] = a;
         }
         else {
-            Teuchos::ArrayView<const zscalar_t> a;
+            Teuchos::ArrayView<const my_zscalar_t> a;
             coordView[i] = a;
         }
     }
@@ -645,9 +660,15 @@ int GeometricGenInterface(RCP<const Teuchos::Comm<int> > &comm,
                                    tMVector_t(mp, coordView.view(0, coord_dim),
                                               coord_dim));
 
+    if (comm->getRank() == 0){
+    cout << "size of my_zscalar_t:" << sizeof(my_zscalar_t) << endl;
+    cout << "size of my_zgno_t:" << sizeof(my_zgno_t) << endl;
+    cout << "size of my_zlno_t:" << sizeof(my_zlno_t) << endl;
+    }
+
     RCP<const tMVector_t> coordsConst =
                           Teuchos::rcp_const_cast<const tMVector_t>(tmVector);
-    vector<const zscalar_t *> weights;
+    vector<const my_zscalar_t *> weights;
     if(numWeightsPerCoord){
         for (int i = 0; i < numWeightsPerCoord;++i){
           weights.push_back(weight[i]);
@@ -723,9 +744,30 @@ int GeometricGenInterface(RCP<const Teuchos::Comm<int> > &comm,
     distribute_points(problem->getSolution().getPartListView(), coords, numLocalPoints, coord_dim, comm);
     problem->getEnvironment()->timerStop(Zoltan2::MACRO_TIMERS, "Bucket Redistribution");
 
-    problem->getEnvironment()->timerStart(Zoltan2::MACRO_TIMERS, "Local Sort");
+
+#ifdef HAVE_ZOLTAN2_OMP
+    int num_threads = 1;
+#pragma omp parallel
+    {
+    	num_threads = omp_get_num_threads();
+    }
+    problem->getEnvironment()->timerStart(Zoltan2::MACRO_TIMERS, "MT Local Sort");
+    /*
+    vector<my_zscalar_t> tmp(1,0);
+    auto itb = tmp.begin() -  (&(tmp[0]) - coords[0]);
+    */
+
+    //__gnu_parallel::parallel_sort_mwms 	(coords[0],coords[0] + numLocalPoints,  std::less<my_zscalar_t>(), num_threads);
+    //__gnu_parallel::parallel_sort_mwms<true, false> (itb,itb + numLocalPoints,  std::less<my_zscalar_t>(), num_threads);
+    __gnu_parallel::parallel_sort_mwms<true, false, my_zscalar_t *> (coords[0],coords[0] + numLocalPoints,  std::less<my_zscalar_t>(), num_threads);
+    problem->getEnvironment()->timerStop(Zoltan2::MACRO_TIMERS, "MT Local Sort");
+#else
+    problem->getEnvironment()->timerStart(Zoltan2::MACRO_TIMERS, "SEQ Local Sort");
     std::sort(coords[0],coords[0] + numLocalPoints);
-    problem->getEnvironment()->timerStop(Zoltan2::MACRO_TIMERS, "Local Sort");
+    problem->getEnvironment()->timerStop(Zoltan2::MACRO_TIMERS, "SEQ Local Sort");
+#endif
+
+
 
     problem->printTimers();
 
@@ -762,7 +804,7 @@ int testFromDataFile(
         int k,
         int migration_check_option,
         int migration_all_to_all_type,
-        zscalar_t migration_imbalance_cut_off,
+        my_zscalar_t migration_imbalance_cut_off,
         int migration_processor_assignment_type,
         int migration_doMigration_type,
         bool test_boxes,
@@ -949,8 +991,8 @@ int testFromDataFile(
 
 #ifdef hopper_separate_test
 
-template <typename zscalar_t, typename zlno_t>
-void getCoords(zscalar_t **&coords, zlno_t &numLocal, int &dim, string fileName){
+template <typename my_zscalar_t, typename my_zlno_t>
+void getCoords(my_zscalar_t **&coords, my_zlno_t &numLocal, int &dim, string fileName){
     FILE *f = fopen(fileName.c_str(), "r");
     if (f == NULL){
         cout << fileName << " cannot be opened" << endl;
@@ -958,12 +1000,12 @@ void getCoords(zscalar_t **&coords, zlno_t &numLocal, int &dim, string fileName)
     }
     fscanf(f, "%d", &numLocal);
     fscanf(f, "%d", &dim);
-    coords = new zscalar_t *[ dim];
+    coords = new my_zscalar_t *[ dim];
     for (int i = 0; i < dim; ++i){
-        coords[i] = new zscalar_t[numLocal];
+        coords[i] = new my_zscalar_t[numLocal];
     }
     for (int i = 0; i < dim; ++i){
-        for (zlno_t j = 0; j < numLocal; ++j){
+        for (my_zlno_t j = 0; j < numLocal; ++j){
             fscanf(f, "%lf", &(coords[i][j]));
         }
     }
@@ -981,7 +1023,7 @@ int testFromSeparateDataFiles(
         int k,
         int migration_check_option,
         int migration_all_to_all_type,
-        zscalar_t migration_imbalance_cut_off,
+        my_zscalar_t migration_imbalance_cut_off,
         int migration_processor_assignment_type,
         int migration_doMigration_type,
         int test_boxes,
@@ -994,29 +1036,29 @@ int testFromSeparateDataFiles(
 
     int ierr = 0;
     int mR = comm->getRank();
-    if (mR == 0) cout << "size of zscalar_t:" << sizeof(zscalar_t) << endl;
+    if (mR == 0) cout << "size of my_zscalar_t:" << sizeof(my_zscalar_t) << endl;
     string tFile = fname +"_" + Teuchos::toString<int>(mR) + ".mtx";
-    zscalar_t **double_coords;
-    zlno_t numLocal = 0;
+    my_zscalar_t **double_coords;
+    my_zlno_t numLocal = 0;
     int dim = 0;
-    getCoords<zscalar_t, zlno_t>(double_coords, numLocal, dim, tFile);
+    getCoords<my_zscalar_t, my_zlno_t>(double_coords, numLocal, dim, tFile);
     //UserInputForTests uinput(testDataFilePath, fname, comm, true);
-    Teuchos::Array<Teuchos::ArrayView<const zscalar_t> > coordView(dim);
+    Teuchos::Array<Teuchos::ArrayView<const my_zscalar_t> > coordView(dim);
     for (int i=0; i < dim; i++){
         if(numLocal > 0){
-            Teuchos::ArrayView<const zscalar_t> a(double_coords[i], numLocal);
+            Teuchos::ArrayView<const my_zscalar_t> a(double_coords[i], numLocal);
             coordView[i] = a;
         } else{
-            Teuchos::ArrayView<const zscalar_t> a;
+            Teuchos::ArrayView<const my_zscalar_t> a;
             coordView[i] = a;
         }
     }
 
-    zgno_t numGlobal;
-    zgno_t nL = numLocal;
+    my_zgno_t numGlobal;
+    my_zgno_t nL = numLocal;
     Teuchos::Comm<int> *tcomm =  (Teuchos::Comm<int> *)comm.getRawPtr();
 
-    reduceAll<int, zgno_t>(
+    reduceAll<int, my_zgno_t>(
             *tcomm,
             Teuchos::REDUCE_SUM,
             1,
@@ -1025,10 +1067,10 @@ int testFromSeparateDataFiles(
     );
 
 
-    RCP<Tpetra::Map<zlno_t, zgno_t, znode_t> > mp = rcp(
-            new Tpetra::Map<zlno_t, zgno_t, znode_t> (numGlobal, numLocal, 0, comm));
-    RCP< Tpetra::MultiVector<zscalar_t, zlno_t, zgno_t, znode_t> >coords = RCP< Tpetra::MultiVector<zscalar_t, zlno_t, zgno_t, znode_t> >(
-            new Tpetra::MultiVector<zscalar_t, zlno_t, zgno_t, znode_t>( mp, coordView.view(0, dim), dim));
+    RCP<Tpetra::Map<my_zlno_t, my_zgno_t, znode_t> > mp = rcp(
+            new Tpetra::Map<my_zlno_t, my_zgno_t, znode_t> (numGlobal, numLocal, 0, comm));
+    RCP< Tpetra::MultiVector<my_zscalar_t, my_zlno_t, my_zgno_t, znode_t> >coords = RCP< Tpetra::MultiVector<my_zscalar_t, my_zlno_t, my_zgno_t, znode_t> >(
+            new Tpetra::MultiVector<my_zscalar_t, my_zlno_t, my_zgno_t, znode_t>( mp, coordView.view(0, dim), dim));
 
 
     RCP<const tMVector_t> coordsConst = rcp_const_cast<const tMVector_t>(coords);
@@ -1166,7 +1208,7 @@ void getArgVals(
         int &k,
         int &migration_check_option,
         int &migration_all_to_all_type,
-        zscalar_t &migration_imbalance_cut_off,
+        my_zscalar_t &migration_imbalance_cut_off,
         int &migration_processor_assignment_type,
         int &migration_doMigration_type,
         bool &test_boxes,
@@ -1352,7 +1394,7 @@ int main(int argc, char *argv[])
 
     int migration_check_option = -2;
     int migration_all_to_all_type = -1;
-    zscalar_t migration_imbalance_cut_off = -1.15;
+    my_zscalar_t migration_imbalance_cut_off = -1.15;
     int migration_processor_assignment_type = -1;
     int migration_doMigration_type = -1;
     int  mj_premigration_option = 0;

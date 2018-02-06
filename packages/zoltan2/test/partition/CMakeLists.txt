@@ -10,9 +10,15 @@ IF (${PROJECT_NAME}_ENABLE_Galeri)
     )
 ENDIF()
 
-TRIBITS_ADD_EXECUTABLE(
+TRIBITS_ADD_EXECUTABLE_AND_TEST(
     mjSort
     SOURCES MultiJaggedSortingTest.cpp
+    NUM_MPI_PROCS 4
+    COMM serial mpi
+    ARGS
+    "I=1.03 P=2,2 O=0 C=4 F=simple TB=1"
+    PASS_REGULAR_EXPRESSION "PASS"
+    FAIL_REGULAR_EXPRESSION "FAIL"
 )
   
 # MultiJagged Tests
@@ -467,6 +473,7 @@ TRIBITS_ADD_EXECUTABLE(
 # Command that copies files to the executable directory.
 TRIBITS_COPY_FILES_TO_BINARY_DIR(copy_files_for_partition_tests
   SOURCE_FILES
+    1D.txt
     simple.mtx
     simple_coord.mtx
     USAir97.mtx

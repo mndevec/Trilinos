@@ -139,8 +139,8 @@ typedef Tpetra::Map<>::node_type znode_t;
     typedef size_t  zgno_t;
 # else  // !TEST_STK_DATA_TYPES
     typedef double zscalar_t;
-    typedef int zlno_t;
-    typedef int zgno_t;
+    typedef long zlno_t;
+    typedef long zgno_t;
 #   define HAVE_EPETRA_DATA_TYPES
 # endif  // TEST_STK_DATA_TYPES
 
